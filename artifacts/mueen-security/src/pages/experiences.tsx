@@ -14,7 +14,7 @@ const copy = {
     monitoring: 'Haram safety coordination', overviewDesc: 'A calm, shared picture for coordinated response.',
     crowd: 'Crowd density', active: 'Active incidents', risk: 'Overall risk', availability: 'Staff available',
     simulated: 'Demonstration estimate', openCases: 'Open cases requiring attention', stable: 'Elevated · manageable',
-    onDuty: 'of 124 on-duty personnel', zoneMap: 'Haram zone overview', mapHint: 'Schematic only · not a live map',
+    onDuty: 'of 124 on-duty personnel', zoneMap: 'Haram zone heatmap', mapHint: 'Simulated crowd density · not a live map',
     prediction: 'Prediction summary', predText: 'Demonstration trend suggests denser footfall around King Fahd Gate over the next 20 minutes. Consider keeping the eastern approach clear.',
     recent: 'Recent incidents', activity: 'Operations activity', viewStaff: 'Open staff directory',
     assigned: 'Assigned', available: 'Available', unavailable: 'Unavailable', dispatch: 'Dispatch',
@@ -36,7 +36,7 @@ const copy = {
     confirmation: 'Report received', confirmationText: 'Your report has been added to the local demonstration incident log for the operations team.',
     reference: 'Reference', another: 'Submit another report', chooseLocation: 'Enter a location to continue.',
     selectIncidentError: 'Choose an incident type to continue.', noReports: 'No incidents have been reported yet.',
-    schematic: 'SCHEMATIC', high: 'High', moderate: 'Moderate', low: 'Lower', liveData: 'Illustrative values only. No live CCTV, GPS, or operational data is connected.',
+    schematic: 'SIMULATED HEATMAP', high: 'High', moderate: 'Moderate', low: 'Lower', liveData: 'Illustrative values only. No live CCTV, GPS, or operational data is connected.',
   },
   ar: {
     overview: 'نظرة عامة على العمليات', staff: 'الأفراد والتوجيه', dashboard: 'لوحة العمليات', personnel: 'الأفراد',
@@ -44,7 +44,7 @@ const copy = {
     monitoring: 'تنسيق السلامة في الحرم', overviewDesc: 'صورة موحدة وهادئة للاستجابة المنسقة.',
     crowd: 'كثافة الحشود', active: 'البلاغات النشطة', risk: 'مستوى المخاطر', availability: 'الأفراد المتاحون',
     simulated: 'تقدير توضيحي', openCases: 'بلاغات مفتوحة تتطلب المتابعة', stable: 'مرتفع · قابل للإدارة',
-    onDuty: 'من أصل ١٢٤ فرداً في المناوبة', zoneMap: 'نظرة عامة على مناطق الحرم', mapHint: 'مخطط توضيحي · ليس خريطة مباشرة',
+    onDuty: 'من أصل ١٢٤ فرداً في المناوبة', zoneMap: 'خريطة كثافة الحشود في الحرم', mapHint: 'كثافة الحشود محاكاة · ليست خريطة مباشرة',
     prediction: 'ملخص التوقعات', predText: 'يشير الاتجاه التوضيحي إلى زيادة الحركة قرب بوابة الملك فهد خلال العشرين دقيقة القادمة. يُنصح بإبقاء المدخل الشرقي خالياً.',
     recent: 'البلاغات الأخيرة', activity: 'نشاط العمليات', viewStaff: 'فتح دليل الأفراد',
     assigned: 'مكلّف', available: 'متاح', unavailable: 'غير متاح', dispatch: 'توجيه',
@@ -66,7 +66,7 @@ const copy = {
     confirmation: 'تم استلام البلاغ', confirmationText: 'أُضيف بلاغك إلى سجل البلاغات المحلي التوضيحي لفريق العمليات.',
     reference: 'المرجع', another: 'إرسال بلاغ آخر', chooseLocation: 'أدخل الموقع للمتابعة.',
     selectIncidentError: 'اختر نوع البلاغ للمتابعة.', noReports: 'لا توجد بلاغات حتى الآن.',
-    schematic: 'مخطط توضيحي', high: 'مرتفع', moderate: 'متوسط', low: 'منخفض', liveData: 'قيم توضيحية فقط. لا توجد كاميرات أو GPS أو بيانات تشغيلية مباشرة.',
+    schematic: 'خريطة حرارية توضيحية', high: 'مرتفع', moderate: 'متوسط', low: 'منخفض', liveData: 'قيم توضيحية فقط. لا توجد كاميرات أو GPS أو بيانات تشغيلية مباشرة.',
   },
 };
 
@@ -141,7 +141,31 @@ export function Dashboard({ lang, setLang }: { lang: Language; setLang: (lang: L
       <section className="panel">
         <div className="panel-head"><div><div className="panel-title">{t.zoneMap}</div><div className="panel-caption">{t.mapHint}</div></div><span className="demo-pill">{t.schematic}</span></div>
         <div className="panel-body"><div className="map-wrap"><div className="map-north">N ↑</div>
-          <div className="map-canvas"><div className="haram-core"><div className="kaaba" aria-label="Kaaba schematic" /></div>
+          <div className="map-canvas">
+            <svg className="heatmap-plan" viewBox="0 0 800 360" role="img" aria-label={lang === 'ar' ? 'خريطة حرارية توضيحية لكثافة الحشود في مناطق الحرم' : 'Simulated crowd-density heatmap of Haram zones'}>
+              <defs>
+                <radialGradient id="heat-high"><stop offset="0%" stopColor="#f26b55" stopOpacity=".88" /><stop offset="43%" stopColor="#e69a50" stopOpacity=".58" /><stop offset="100%" stopColor="#d98b4e" stopOpacity="0" /></radialGradient>
+                <radialGradient id="heat-mid"><stop offset="0%" stopColor="#efbd58" stopOpacity=".8" /><stop offset="58%" stopColor="#dfaa4e" stopOpacity=".44" /><stop offset="100%" stopColor="#d5a958" stopOpacity="0" /></radialGradient>
+                <radialGradient id="heat-low"><stop offset="0%" stopColor="#62b9a2" stopOpacity=".67" /><stop offset="60%" stopColor="#51a58f" stopOpacity=".34" /><stop offset="100%" stopColor="#51a58f" stopOpacity="0" /></radialGradient>
+              </defs>
+              <path d="M115 99 Q129 58 193 45 L607 45 Q670 58 685 99 L685 261 Q670 302 607 315 L193 315 Q129 302 115 261 Z" fill="#1a2c35" stroke="#62766f" strokeOpacity=".68" strokeWidth="2" />
+              <path d="M145 115 Q158 82 211 70 L589 70 Q642 82 655 115 L655 245 Q642 278 589 290 L211 290 Q158 278 145 245 Z" fill="#20343a" stroke="#465c59" strokeWidth="1.5" />
+              <ellipse cx="194" cy="111" rx="150" ry="88" fill="url(#heat-high)" />
+              <ellipse cx="606" cy="111" rx="139" ry="84" fill="url(#heat-mid)" />
+              <ellipse cx="188" cy="268" rx="126" ry="76" fill="url(#heat-low)" />
+              <ellipse cx="613" cy="267" rx="132" ry="75" fill="url(#heat-low)" />
+              <path d="M159 130 H278 M522 130 H641 M159 230 H278 M522 230 H641" stroke="#91a59b" strokeOpacity=".35" strokeWidth="2" strokeDasharray="5 7" />
+              <ellipse cx="400" cy="180" rx="169" ry="120" fill="none" stroke="#8ca19a" strokeOpacity=".48" strokeWidth="2" />
+              <ellipse cx="400" cy="180" rx="143" ry="101" fill="none" stroke="#91a59b" strokeOpacity=".35" strokeWidth="1.5" />
+              <ellipse cx="400" cy="180" rx="117" ry="82" fill="#17302e" stroke="#9cb4a6" strokeOpacity=".67" strokeWidth="2" />
+              <ellipse cx="400" cy="180" rx="92" ry="63" fill="none" stroke="#76938a" strokeOpacity=".44" strokeWidth="1.5" />
+              <rect x="389" y="169" width="22" height="22" rx="1.5" transform="rotate(45 400 180)" fill="#11191c" stroke="#c1a56e" strokeWidth="2" />
+              <path d="M391 175 H409" stroke="#c1a56e" strokeWidth="1.5" />
+              <circle cx="194" cy="111" r="5" fill="#f18a64" stroke="#f8cf9b" strokeWidth="2" />
+              <circle cx="606" cy="111" r="5" fill="#e6b957" stroke="#f8e1a7" strokeWidth="2" />
+              <circle cx="188" cy="268" r="5" fill="#62b9a2" stroke="#b2e1d1" strokeWidth="2" />
+              <circle cx="613" cy="267" r="5" fill="#62b9a2" stroke="#b2e1d1" strokeWidth="2" />
+            </svg>
             <span className="zone risk-high z1">{zones[0]} · {t.high}</span><span className="zone risk-mid z2">{zones[1]} · {t.moderate}</span>
             <span className="zone risk-low z3">{zones[2]} · {t.low}</span><span className="zone risk-low z4">{zones[3]} · {t.low}</span>
           </div></div>
