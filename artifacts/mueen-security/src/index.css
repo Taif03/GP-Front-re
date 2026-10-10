@@ -403,6 +403,67 @@ button, a { -webkit-tap-highlight-color: transparent; }
 @media(max-width:760px){.command-center[dir=rtl] .ops-panel{left:10px;right:auto}.command-center[dir=rtl] .tile-status{right:10px;left:auto}.command-center[dir=rtl] .map-legend-box{right:10px;left:auto}}
 @media(max-width:420px){.monitor-live{gap:5px;letter-spacing:.55px}.command-topbar{gap:8px}.ops-panel{max-height:65vh}.map-title{max-width:218px}.map-title .eyebrow{font-size:7px}.telemetry-number{font-size:19px}}
 
+/* Incident lifecycle controls and the shared-state operations feed */
+.command-center{background:#101916;color:#e5dfd3}
+.command-center:after{content:'';position:fixed;inset:0;pointer-events:none;z-index:700;opacity:.025;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.82' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.45'/%3E%3C/svg%3E")}
+.command-topbar{background:#101a16;border-bottom-color:#344338}
+.monitor-live{color:#d7e7dc}
+.command-lang:focus-visible,.icon-button:focus-visible,.dispatch-action:focus-visible,.incident-filter:focus-visible,.incident-action:focus-visible,.incident-select:focus-visible{outline:2px solid #c5d3b7;outline-offset:2px}
+.ops-panel{background:rgba(17,27,22,.98);border-color:#465447}
+.telemetry-grid.summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+.telemetry-card.summary-card{min-height:72px;padding:10px 11px}
+.telemetry-card.summary-card .telemetry-number{margin-top:5px;font-size:20px}
+.telemetry-card.summary-card.resolved{border-top:2px solid #8eaa9a}
+.telemetry-card.summary-card.units{border-top:2px solid #84a9bd}
+.telemetry-card.summary-card.risk{border-top:2px solid #d5a858}
+.telemetry-number.risk-value{font-size:13px!important;line-height:1.35}
+.incident-filters{display:flex;gap:5px;margin:0 0 9px;padding:3px;background:#101a15;border:1px solid #2f4035;border-radius:6px}
+.incident-filter{flex:1;border:0;border-radius:4px;padding:7px 5px;background:transparent;color:#a4b1a4;font-size:9px;cursor:pointer}
+.incident-filter[aria-pressed=true]{color:#e2eadf;background:#294535;box-shadow:inset 0 0 0 1px #53715b}
+.incident-feed{display:grid;gap:7px;max-height:250px;overflow:auto}
+.feed-incident{border:1px solid #2f4034;background:#17241c;border-radius:6px;padding:9px 9px 8px}
+.feed-incident.resolved{border-color:#3d5146;background:#18251f}
+.feed-topline{display:flex;align-items:center;justify-content:space-between;gap:7px}
+.feed-id{font:600 9px 'DM Sans',sans-serif;color:#d9e3d8;letter-spacing:.25px}
+.feed-status{font-size:7px;letter-spacing:.35px;padding:3px 5px;border-radius:3px;background:#3b3021;color:#e5c47e;text-transform:uppercase}
+.feed-status.resolved{background:#263d32;color:#a9d2b5}
+.feed-status.dismissed{background:#303733;color:#b4bcb5}
+.feed-location{font-size:9px;color:#c5cec3;margin-top:5px}
+.feed-detail{font-size:8px;line-height:1.45;color:#8f9e91;margin-top:3px}
+.feed-meta{display:flex;justify-content:space-between;gap:5px;color:#8e9b90;font-size:7px;margin-top:6px}
+.feed-countdown{font-variant-numeric:tabular-nums;color:#e8c579}
+.feed-countdown.urgent{color:#f08b75}
+.feed-empty{padding:15px 8px;text-align:center;color:#99a79c;font-size:9px;border:1px dashed #39483d;border-radius:6px}
+.popup-actions{display:grid;gap:7px;margin-top:10px}
+.incident-select{width:100%;min-height:33px;border:1px solid #485b4c;border-radius:5px;background:#111d17;color:#e5dfd3;padding:6px 8px;font-size:10px}
+.incident-action{min-height:33px;border:1px solid #547a60;border-radius:5px;background:#28533c;color:#e6efe4;font-size:9px;font-weight:600;padding:6px 9px;cursor:pointer}
+.incident-action:hover{background:#356848}
+.incident-action.secondary{background:#28372e;border-color:#506253;color:#d6dfd5}
+.incident-action.dismiss{background:#48302b;border-color:#785249;color:#edd0c5}
+.incident-action:disabled{opacity:.48;cursor:not-allowed}
+.popup-feedback{font-size:9px;line-height:1.45;padding:7px;border-radius:4px;background:#20382a;color:#c6e1cc}
+.popup-feedback.error{background:#3c2b27;color:#e7b6a8}
+.popup-complete{margin-top:8px;border-top:1px solid #394a3d;padding-top:7px;color:#b3d0b9;font-size:9px}
+.alert-div-icon.resolved .alert-marker{background:#6d8274;border-color:#d8e1d7}
+.alert-div-icon.dismissed .alert-marker{background:#626a64;border-color:#c2c8c1}
+.leaflet-control-attribution{font-family:'DM Sans','IBM Plex Sans Arabic',sans-serif}
+.ops-map .leaflet-popup-content{min-width:210px}
+.map-footer-note{max-width:250px}
+.dispatch-action:disabled{opacity:.48}
+@media(max-width:760px){
+ .command-center{height:auto;min-height:100dvh;overflow:visible}
+ .command-main{height:calc(100dvh - 58px);min-height:570px;flex:none}
+ .ops-panel{z-index:410}
+ .incident-feed{max-height:190px}
+ .map-hud{pointer-events:none}
+ .map-coordinates{display:none}
+}
+@media(max-width:420px){
+ .telemetry-card.summary-card{min-height:66px;padding:8px}
+ .telemetry-card.summary-card .telemetry-number{font-size:18px}
+ .incident-filter{font-size:8px}
+}
+
 /**
  * Using the elevate system.
  * Automatic contrast adjustment.

@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { Circle, CircleMarker, MapContainer, Marker, Popup, TileLayer } from 'react-leaflet';
 import { divIcon, type LatLngExpression } from 'leaflet';
 import type { Incident, StaffMember } from '../lib/security-data';
@@ -45,13 +45,87 @@ export type PositionedUnit = { person: StaffMember; position: [number, number] }
 type OperationsMapProps = {
   incidents: Incident[];
   units: PositionedUnit[];
+  staff: StaffMember[];
   lang: Language;
   density: number[];
+  assignIncident: (incidentId: string, staffId: string) => boolean;
+  resolveIncident: (incidentId: string) => boolean;
+  dismissIncident: (incidentId: string) => boolean;
 };
 
-export function OperationsMap({ incidents, units, lang, density }: OperationsMapProps) {
+function IncidentPopup({ incident, staff, lang, now, assignIncident, resolveIncident, dismissIncident }: {
+  incident: Incident;
+  staff: StaffMember[];
+  lang: Language;
+  now: number;
+  assignIncident: OperationsMapProps['assignIncident'];
+  resolveIncident: OperationsMapProps['resolveIncident'];
+  dismissIncident: OperationsMapProps['dismissIncident'];
+}) {
+  const [staffId, setStaffId] = useState('');
+  const [feedback, setFeedback] = useState<{ text: string; error: boolean } | null>(null);
+  const isArabic = lang === 'ar';
+  const active = incident.status === 'Open' || incident.status === 'Assigned';
+  const availableStaff = staff.filter((person) => person.status === 'Available');
+  const deadline = incident.autoResolveAt;
+  const remaining = deadline ? Math.max(0, Math.ceil((deadline - now) / 1000)) : null;
+  const statusText = incident.status === 'Resolved'
+    ? (isArabic ? 'تم الإنجاز' : 'Resolved')
+    : incident.status === 'Dismissed'
+      ? (isArabic ? 'ملغي' : 'Dismissed')
+      : incident.status === 'Assigned'
+        ? (isArabic ? 'مكلّف' : 'Assigned')
+        : (isArabic ? 'مفتوح' : 'Open');
+  const perform = (action: 'assign' | 'resolve' | 'dismiss') => {
+    const success = action === 'assign'
+      ? (staffId ? assignIncident(incident.id, staffId) : false)
+      : action === 'resolve'
+        ? resolveIncident(incident.id)
+        : dismissIncident(incident.id);
+    const text = action === 'assign'
+      ? (isArabic ? 'تم تكليف الفرد بالبلاغ.' : 'Officer assigned to the report.')
+      : action === 'resolve'
+        ? (isArabic ? 'تم الإنجاز' : 'Report marked as resolved.')
+        : (isArabic ? 'تم إلغاء البلاغ.' : 'Alert dismissed.');
+    const errorText = isArabic ? 'تعذر تنفيذ الإجراء. تحقق من حالة البلاغ والفرد.' : 'Action could not be completed. Check the report and officer status.';
+    setFeedback({ text: success ? text : errorText, error: !success });
+    if (success && action === 'assign') setStaffId('');
+  };
+
+  return <div className="incident-popup" dir={isArabic ? 'rtl' : 'ltr'} data-testid={`popup-incident-${incident.id}`}>
+    <div className="popup-title">{incident.reportedBy === 'Guest' ? (isArabic ? 'بلاغ زائر' : 'Guest report') : (isArabic ? 'بلاغ عمليات' : 'Operations report')} · {incident.id}</div>
+    <div className="popup-line"><b>{isArabic ? 'النوع' : 'Type'}:</b> {incident.type}</div>
+    <div className="popup-line"><b>{isArabic ? 'الحالة' : 'Status'}:</b> {statusText}{incident.assignedStaff ? ` · ${incident.assignedStaff}` : ''}</div>
+    <div className="popup-line"><b>{isArabic ? 'الموقع' : 'Location'}:</b> {incident.location}</div>
+    {incident.description && <div className="popup-line"><b>{isArabic ? 'التفاصيل' : 'Details'}:</b> {incident.description}</div>}
+    <div className="popup-line"><b>{isArabic ? 'وقت البلاغ' : 'Reported'}:</b> {incident.createdAt}</div>
+    {incident.reportedBy === 'Guest' && active && remaining !== null && <div className="popup-line feed-countdown" role="timer" aria-live="off" data-testid={`countdown-popup-${incident.id}`}><b>{isArabic ? 'الوقت المتبقي' : 'Time remaining'}:</b> {remaining}s</div>}
+    {incident.status === 'Resolved' && <div className="popup-complete" data-testid={`status-resolved-${incident.id}`}>{isArabic ? 'تم الإنجاز' : 'Completed'}{incident.resolvedAt ? ` · ${new Date(incident.resolvedAt).toLocaleTimeString(isArabic ? 'ar-SA' : 'en-GB', { hour: '2-digit', minute: '2-digit' })}` : ''}</div>}
+    {incident.status === 'Dismissed' && <div className="popup-complete">{isArabic ? 'تم إلغاء البلاغ' : 'Alert dismissed'}</div>}
+    {active && <div className="popup-actions">
+      {incident.status === 'Open' && <>
+        <label className="sr-only" htmlFor={`officer-${incident.id}`}>{isArabic ? 'اختيار فرد متاح' : 'Select available officer'}</label>
+        <select id={`officer-${incident.id}`} className="incident-select" value={staffId} onChange={(event) => setStaffId(event.target.value)} data-testid={`select-officer-${incident.id}`}>
+          <option value="">{isArabic ? 'اختر فرداً متاحاً' : 'Select available officer'}</option>
+          {availableStaff.map((person) => <option key={person.id} value={person.id}>{person.name} · {person.role}</option>)}
+        </select>
+        <button type="button" className="incident-action" disabled={!staffId} onClick={() => perform('assign')} data-testid={`button-assign-${incident.id}`}>{isArabic ? 'تكليف أمني' : 'Assign Security'}</button>
+      </>}
+      <button type="button" className="incident-action secondary" onClick={() => perform('resolve')} data-testid={`button-resolve-${incident.id}`}>{isArabic ? 'تغيير إلى منجز' : 'Mark as Resolved'}</button>
+      <button type="button" className="incident-action dismiss" onClick={() => perform('dismiss')} data-testid={`button-dismiss-${incident.id}`}>{isArabic ? 'إلغاء البلاغ' : 'Dismiss Alert'}</button>
+      {feedback && <div className={`popup-feedback ${feedback.error ? 'error' : ''}`} role={feedback.error ? 'alert' : 'status'} data-testid={`feedback-incident-${incident.id}`}>{feedback.text}</div>}
+    </div>}
+  </div>;
+}
+
+export function OperationsMap({ incidents, units, staff, lang, density, assignIncident, resolveIncident, dismissIncident }: OperationsMapProps) {
   const [tilesFailed, setTilesFailed] = useState(false);
   const [tilesLoaded, setTilesLoaded] = useState(false);
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const interval = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(interval);
+  }, []);
   const zoneLabels = useMemo(() => gates.map((gate, index) => ({
     ...gate, level: density[index] ?? gate.level,
     icon: divIcon({
@@ -72,17 +146,26 @@ export function OperationsMap({ incidents, units, lang, density }: OperationsMap
       {zoneLabels.map((gate) => <Fragment key={`crowd-${gate.id}`}>
         <Circle center={gate.point} radius={gate.radius} pathOptions={{ color: gate.risk === 'high' ? '#ed665b' : gate.risk === 'medium' ? '#e4bb51' : '#68bd88', fillColor: gate.risk === 'high' ? '#e95349' : gate.risk === 'medium' ? '#e5b63e' : '#4caf75', fillOpacity: 0.16 + gate.level / 650, weight: 1, opacity: .74, className: 'map-pulse' }} />
         <CircleMarker center={gate.point} radius={5 + gate.level / 18} pathOptions={{ color: gate.risk === 'high' ? '#f07a68' : gate.risk === 'medium' ? '#e9c35f' : '#7ad398', fillColor: gate.risk === 'high' ? '#e75c50' : gate.risk === 'medium' ? '#dfb13e' : '#4cae6a', fillOpacity: .35, weight: 1.5 }} />
-        <Marker position={gate.labelPoint} icon={gate.icon}><Popup><div className="popup-title">{lang === 'ar' ? gate.name.ar : gate.name.en}</div><div className="popup-line"><b>{lang === 'ar' ? 'مستوى الكثافة' : 'Estimated density'}:</b> {gate.level}% · {lang === 'ar' ? 'توضيحي' : 'illustrative'}</div><div className="popup-line"><b>{lang === 'ar' ? 'التوقع' : 'Trend'}:</b> {gate.risk === 'high' ? (lang === 'ar' ? 'ازدحام مرتفع' : 'High crowding') : gate.risk === 'medium' ? (lang === 'ar' ? 'حركة معتدلة' : 'Moderate flow') : (lang === 'ar' ? 'حركة منخفضة' : 'Lower footfall')}</div><div className="popup-line">{lang === 'ar' ? 'تحديث توضيحي' : 'Demo update'} · {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div></Popup></Marker>
+        <Marker position={gate.labelPoint} icon={gate.icon}><Popup><div className="popup-title">{lang === 'ar' ? gate.name.ar : gate.name.en}</div><div className="popup-line"><b>{lang === 'ar' ? 'مستوى الكثافة' : 'Estimated density'}:</b> {gate.level}% · {lang === 'ar' ? 'توضيحي' : 'illustrative'}</div><div className="popup-line"><b>{lang === 'ar' ? 'التوقع' : 'Trend'}:</b> {gate.risk === 'high' ? (lang === 'ar' ? 'ازدحام مرتفع' : 'High crowding') : gate.risk === 'medium' ? (lang === 'ar' ? 'حركة معتدلة' : 'Moderate flow') : (lang === 'ar' ? 'حركة منخفضة' : 'Lower footfall')}</div><div className="popup-line">{lang === 'ar' ? 'تحديث توضيحي' : 'Demo update'} · {new Date(now).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div></Popup></Marker>
       </Fragment>)}
       {units.map(({ person, position }) => <Marker key={person.id} position={position} icon={divIcon({ className: 'unit-div-icon', html: '<div class="unit-marker" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3 20 6v5c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6z"/><path d="m9 12 2 2 4-4"/></svg></div>', iconSize: [27, 27], iconAnchor: [13, 13] })}>
         <Popup><div className="popup-title">{person.name}</div><div className="popup-line"><b>{lang === 'ar' ? 'الدور' : 'Role'}:</b> {person.role}</div><div className="popup-line"><b>{lang === 'ar' ? 'الحالة' : 'Status'}:</b> {person.status === 'Available' ? (lang === 'ar' ? 'متاح' : 'Available') : person.status === 'Assigned' ? (lang === 'ar' ? 'مكلّف' : 'Assigned') : (lang === 'ar' ? 'غير متاح' : 'Unavailable')}</div><div className="popup-line"><b>{lang === 'ar' ? 'الموقع' : 'Location'}:</b> {person.location}</div><div className="popup-line">{lang === 'ar' ? 'موقع متحرك للمحاكاة فقط' : 'Simulated position only'}</div></Popup>
       </Marker>)}
-      {incidents.map((incident) => <Marker key={incident.id} position={locationCoordinates(incident.location)} icon={divIcon({ className: 'alert-div-icon', html: '<div class="alert-marker" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.3 3.9 2.7 17a2 2 0 0 0 1.7 3h15.2a2 2 0 0 0 1.7-3l-7.6-13.1a2 2 0 0 0-3.4 0Z"/></svg></div>', iconSize: [25, 25], iconAnchor: [12, 22] })}>
-        <Popup><div className="popup-title">{incident.id.startsWith('SIM-') ? (lang === 'ar' ? 'تنبيه محاكاة' : 'Simulated alert') : incident.reportedBy === 'Guest' ? (lang === 'ar' ? 'بلاغ زائر' : 'Guest report') : (lang === 'ar' ? 'بلاغ عمليات' : 'Open incident')} · {incident.id}</div><div className="popup-line"><b>{lang === 'ar' ? 'النوع' : 'Type'}:</b> {incident.type}</div><div className="popup-line"><b>{lang === 'ar' ? 'الحالة' : 'Status'}:</b> {incident.status === 'Open' ? (lang === 'ar' ? 'مفتوح' : 'Open') : (lang === 'ar' ? 'مكلّف' : `Assigned${incident.assignedStaff ? ` · ${incident.assignedStaff}` : ''}`)}</div><div className="popup-line"><b>{lang === 'ar' ? 'الموقع' : 'Location'}:</b> {incident.location}</div>{incident.description && <div className="popup-line"><b>{lang === 'ar' ? 'التفاصيل' : 'Details'}:</b> {incident.description}</div>}<div className="popup-line"><b>{lang === 'ar' ? 'وقت البلاغ' : 'Reported'}:</b> {incident.createdAt}</div></Popup>
-      </Marker>)}
+      {incidents.map((incident) => {
+        const iconState = incident.status === 'Resolved' ? 'resolved' : incident.status === 'Dismissed' ? 'dismissed' : 'active';
+        const color = incident.status === 'Resolved' ? '#788e7d' : incident.status === 'Dismissed' ? '#727a73' : '#c54f45';
+        const icon = divIcon({
+          className: `alert-div-icon ${iconState}`,
+          html: `<div class="alert-marker" aria-hidden="true" style="background:${color}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.3 3.9 2.7 17a2 2 0 0 0 1.7 3h15.2a2 2 0 0 0 1.7-3l-7.6-13.1a2 2 0 0 0-3.4 0Z"/></svg></div>`,
+          iconSize: [25, 25], iconAnchor: [12, 22],
+        });
+        return <Marker key={incident.id} position={locationCoordinates(incident.location)} icon={icon} data-testid={`marker-incident-${incident.id}`}>
+          <Popup><IncidentPopup incident={incident} staff={staff} lang={lang} now={now} assignIncident={assignIncident} resolveIncident={resolveIncident} dismissIncident={dismissIncident} /></Popup>
+        </Marker>;
+      })}
     </MapContainer>
     {!tilesLoaded && !tilesFailed && <div className="tile-loading" role="status" data-testid="map-tile-loading">{lang === 'ar' ? 'جارٍ تحميل خريطة الأساس…' : 'Loading public map tiles…'}</div>}
-    {tilesFailed && <div className="tile-status" role="status" data-testid="map-tile-warning">{lang === 'ar' ? 'تعذر تحميل بعض خرائط الأساس العامة؛ تبقى طبقات المحاكاة والعلامات متاحة.' : 'Some public base-map tiles could not load. Demo crowd layers and markers remain available.'}</div>}
+    {tilesFailed && <div className="tile-status" role="status" data-testid="map-tile-warning">{lang === 'ar' ? 'تعذر تحميل بعض خرائط الأساس العامة؛ تبقى طبقات المحاكاة والعلامات متاحة.' : 'Some public base-map tiles could not load. Illustrative crowd layers and markers remain available.'}</div>}
   </div>;
 }
 

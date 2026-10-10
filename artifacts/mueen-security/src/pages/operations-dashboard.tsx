@@ -1,26 +1,38 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'wouter';
-import { Activity, ChevronLeft, ChevronRight, FileText, Navigation, Users } from 'lucide-react';
+import { Activity, AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, FileText, Navigation, ShieldCheck, Users } from 'lucide-react';
 import { Brand, type Language } from './experiences';
 import { useSecurityData, type Incident } from '../lib/security-data';
 import { initialUnitPositions, locationCoordinates, OperationsMap, type PositionedUnit } from '../components/operations-map';
 
 type Props = { lang: Language; setLang: (language: Language) => void };
+type IncidentFilter = 'All' | 'Active' | 'Resolved';
+
+const activeStatus = (incident: Incident) => incident.status === 'Open' || incident.status === 'Assigned';
+const deadlineFor = (incident: Incident) => incident.autoResolveAt ?? (incident as Incident & { expiresAt?: number }).expiresAt;
 
 export function OperationsDashboard({ lang, setLang }: Props) {
-  const { incidents, staff, assignIncident } = useSecurityData();
+  const { incidents, staff, assignIncident, resolveIncident, dismissIncident } = useSecurityData();
   const [collapsed, setCollapsed] = useState(false);
   const [crowdTotal, setCrowdTotal] = useState(43860);
   const [density, setDensity] = useState([86, 57, 29]);
-  const [simulatedReports, setSimulatedReports] = useState<Incident[]>([]);
+  const [filter, setFilter] = useState<IncidentFilter>('Active');
   const [units, setUnits] = useState<PositionedUnit[]>(() => initialUnitPositions(staff));
   const [lastUpdated, setLastUpdated] = useState(() => new Date());
+  const [clock, setClock] = useState(() => new Date());
   const [feedback, setFeedback] = useState<{ text: string; error: boolean } | null>(null);
-  const openIncidents = incidents.filter((item) => item.status === 'Open');
-  const guestReports = openIncidents.filter((item) => item.reportedBy === 'Guest');
-  const visibleIncidents = [...incidents.filter((incident) => incident.reportedBy === 'Guest' || incident.status === 'Open'), ...simulatedReports];
-  const activityIncidents = [...simulatedReports, ...openIncidents];
+  const activeIncidents = incidents.filter(activeStatus);
+  const resolvedIncidents = incidents.filter((incident) => incident.status === 'Resolved');
+  const openIncidents = incidents.filter((incident) => incident.status === 'Open');
   const availableCount = staff.filter((person) => person.status === 'Available').length;
+  const assignedCount = staff.filter((person) => person.status === 'Assigned').length;
+  const onFieldCount = availableCount + assignedCount;
+  const visibleIncidents = filter === 'Active'
+    ? activeIncidents
+    : filter === 'Resolved'
+      ? resolvedIncidents
+      : incidents;
+  const isArabic = lang === 'ar';
 
   useEffect(() => {
     setUnits((current) => current.map((unit) => {
@@ -34,6 +46,7 @@ export function OperationsDashboard({ lang, setLang }: Props) {
   }, [staff]);
 
   useEffect(() => {
+    const clockTimer = window.setInterval(() => setClock(new Date()), 1000);
     const timer = window.setInterval(() => {
       setDensity((values) => values.map((value, index) => Math.max(14, Math.min(96, value + Math.round((Math.random() - 0.5) * (index === 0 ? 8 : 12))))));
       setCrowdTotal((value) => value + Math.round((Math.random() - 0.48) * 280));
@@ -46,39 +59,22 @@ export function OperationsDashboard({ lang, setLang }: Props) {
       })));
       setLastUpdated(new Date());
     }, 7000);
-    return () => window.clearInterval(timer);
+    return () => {
+      window.clearInterval(clockTimer);
+      window.clearInterval(timer);
+    };
   }, []);
 
-  useEffect(() => {
-    let sequence = 0;
-    const timer = window.setInterval(() => {
-      const location = ['King Fahd Gate', 'East Plaza', 'Ajyad Gate'][sequence % 3];
-      const type: Incident['type'] = sequence % 2 === 0 ? 'Congestion' : 'Medical emergency';
-      const report: Incident = {
-        id: `SIM-${Date.now()}`,
-        type,
-        location,
-        description: 'Automated demonstration event; no real visitor report was submitted.',
-        createdAt: new Date().toLocaleTimeString(lang === 'ar' ? 'ar-SA' : 'en-GB', { hour: '2-digit', minute: '2-digit' }),
-        status: 'Open',
-        reportedBy: 'Guest',
-      };
-      sequence += 1;
-      setSimulatedReports((current) => [report, ...current].slice(0, 2));
-    }, 25000);
-    return () => window.clearInterval(timer);
-  }, [lang]);
-
   const dispatchNearest = () => {
-    const target = guestReports[0] ?? openIncidents[0];
+    const target = openIncidents[0];
     if (!target) {
-      setFeedback({ text: lang === 'ar' ? 'لا توجد بلاغات مفتوحة للتوجيه حالياً.' : 'There are no open reports to dispatch to.', error: true });
+      setFeedback({ text: isArabic ? 'لا توجد بلاغات مفتوحة للتوجيه حالياً.' : 'There are no open reports to dispatch to.', error: true });
       return;
     }
     const targetPoint = locationCoordinates(target.location);
     const candidates = staff.filter((member) => member.status === 'Available');
     if (!candidates.length) {
-      setFeedback({ text: lang === 'ar' ? 'لا يوجد أفراد متاحون للتوجيه.' : 'No available personnel are currently listed.', error: true });
+      setFeedback({ text: isArabic ? 'لا يوجد أفراد متاحون للتوجيه.' : 'No available personnel are currently listed.', error: true });
       return;
     }
     const currentPoint = (person: typeof candidates[number]) => units.find((unit) => unit.person.id === person.id)?.position ?? locationCoordinates(person.location);
@@ -89,60 +85,89 @@ export function OperationsDashboard({ lang, setLang }: Props) {
     });
     const assigned = assignIncident(target.id, nearest.id);
     setFeedback(assigned
-      ? { text: lang === 'ar' ? `تم توجيه ${nearest.name} إلى ${target.id} (${target.location}).` : `${nearest.name} assigned to ${target.id} at ${target.location}.`, error: false }
-      : { text: lang === 'ar' ? 'تعذر إتمام التوجيه. تحقق من حالة الفرد والبلاغ.' : 'Dispatch could not be completed. Recheck the unit and report status.', error: true });
+      ? { text: isArabic ? `تم توجيه ${nearest.name} إلى ${target.id} (${target.location}).` : `${nearest.name} assigned to ${target.id} at ${target.location}.`, error: false }
+      : { text: isArabic ? 'تعذر إتمام التوجيه. تحقق من حالة الفرد والبلاغ.' : 'Dispatch could not be completed. Recheck the unit and report status.', error: true });
   };
 
-  const appTime = lastUpdated.toLocaleTimeString(lang === 'ar' ? 'ar-SA' : 'en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  return <div className="command-center" dir={lang === 'ar' ? 'rtl' : 'ltr'} data-testid="page-dashboard">
+  const appTime = clock.toLocaleTimeString(isArabic ? 'ar-SA' : 'en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const updateTime = lastUpdated.toLocaleTimeString(isArabic ? 'ar-SA' : 'en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const peakDensity = Math.max(...density);
+  const risk = peakDensity >= 75
+    ? { en: 'Elevated', ar: 'مرتفع', className: 'high' }
+    : peakDensity >= 50
+      ? { en: 'Watch', ar: 'متابعة', className: 'medium' }
+      : { en: 'Steady', ar: 'مستقر', className: 'low' };
+  const filterLabels: Record<IncidentFilter, { en: string; ar: string }> = {
+    All: { en: 'All', ar: 'الكل' },
+    Active: { en: 'Active', ar: 'النشطة' },
+    Resolved: { en: 'Resolved', ar: 'المنجزة' },
+  };
+
+  return <div className="command-center" dir={isArabic ? 'rtl' : 'ltr'} data-testid="page-dashboard">
     <header className="command-topbar">
       <Brand compact />
-      <div className="monitor-live" data-testid="status-live-monitoring"><i className="live-light" />{lang === 'ar' ? 'مراقبة توضيحية' : 'LIVE MONITORING'}</div>
-      <span className="command-tag" data-testid="label-simulated-demo">{lang === 'ar' ? 'عرض توضيحي · بيانات محاكاة' : 'SIMULATED DEMO · ILLUSTRATIVE DATA'}</span>
-      <nav className="command-nav" aria-label={lang === 'ar' ? 'التنقل الرئيسي' : 'Main navigation'}>
-        <Link href="/dashboard" className="active" data-testid="link-dashboard"><Activity />{lang === 'ar' ? 'العمليات' : 'Operations'}</Link>
-        <Link href="/staff" data-testid="link-staff"><Users />{lang === 'ar' ? 'الأفراد' : 'Staff'}</Link>
-        <Link href="/report" data-testid="link-guest-report"><FileText />{lang === 'ar' ? 'بلاغ زائر' : 'Guest report'}</Link>
+      <div className="monitor-live" data-testid="status-live-monitoring"><i className="live-light" />{isArabic ? 'مراقبة توضيحية' : 'OPERATIONS MONITOR'}</div>
+      <span className="command-tag" data-testid="label-simulated-demo">{isArabic ? 'عرض توضيحي · بيانات محاكاة' : 'SIMULATED DEMO · ILLUSTRATIVE DATA'}</span>
+      <span className="command-clock" data-testid="text-live-clock" aria-label={isArabic ? 'الوقت الحالي' : 'Current time'}>{appTime}</span>
+      <nav className="command-nav" aria-label={isArabic ? 'التنقل الرئيسي' : 'Main navigation'}>
+        <Link href="/dashboard" className="active" data-testid="link-dashboard"><Activity />{isArabic ? 'العمليات' : 'Operations'}</Link>
+        <Link href="/staff" data-testid="link-staff"><Users />{isArabic ? 'الأفراد' : 'Staff'}</Link>
+        <Link href="/report" data-testid="link-guest-report"><FileText />{isArabic ? 'بلاغ زائر' : 'Guest report'}</Link>
       </nav>
-      <button className="command-lang" onClick={() => setLang(lang === 'en' ? 'ar' : 'en')} data-testid="button-language" aria-label={lang === 'en' ? 'Switch to Arabic' : 'Switch to English'}>{lang === 'en' ? 'العربية' : 'English'}</button>
+      <button className="command-lang" onClick={() => setLang(isArabic ? 'en' : 'ar')} data-testid="button-language" aria-label={isArabic ? 'Switch to English' : 'Switch to Arabic'}>{isArabic ? 'English' : 'العربية'}</button>
     </header>
     <main className="command-main">
-      <OperationsMap incidents={visibleIncidents} units={units} lang={lang} density={density} />
+      <OperationsMap incidents={visibleIncidents} units={units} staff={staff} lang={lang} density={density} assignIncident={assignIncident} resolveIncident={resolveIncident} dismissIncident={dismissIncident} />
       <div className="map-hud">
-        <div className="map-title"><div className="eyebrow">{lang === 'ar' ? 'مركز تنسيق السلامة · مكة المكرمة' : 'HARAM SAFETY COORDINATION · MAKKAH'}</div><h1>{lang === 'ar' ? 'مركز العمليات' : 'Operations center'}</h1><p>{lang === 'ar' ? 'حرم المسجد الحرام · عرض مكاني توضيحي' : 'Al-Masjid al-Haram · illustrative spatial view'}</p></div>
+        <div className="map-title"><div className="eyebrow">{isArabic ? 'مركز تنسيق السلامة · مكة المكرمة' : 'HARAM SAFETY COORDINATION · MAKKAH'}</div><h1>{isArabic ? 'مركز العمليات' : 'Operations center'}</h1><p>{isArabic ? 'حرم المسجد الحرام · عرض مكاني توضيحي' : 'Al-Masjid al-Haram · illustrative spatial view'}</p></div>
         <div className="map-coordinates" data-testid="text-map-center">21.4225° N&nbsp; 39.8262° E</div>
       </div>
-      <aside className={`ops-panel ${collapsed ? 'collapsed' : ''}`} aria-label={lang === 'ar' ? 'لوحة القياس والتوجيه' : 'Telemetry and dispatch panel'} data-testid="panel-telemetry">
+      <aside className={`ops-panel ${collapsed ? 'collapsed' : ''}`} aria-label={isArabic ? 'لوحة القياس والتوجيه' : 'Telemetry and dispatch panel'} data-testid="panel-telemetry">
         <div className="ops-panel-head">
-          {!collapsed && <div><div className="ops-panel-title">{lang === 'ar' ? 'لوحة المتابعة' : 'FIELD OVERVIEW'}</div><span className="ops-panel-kicker">{lang === 'ar' ? 'مؤشرات توضيحية · محلية' : 'SIMULATED TELEMETRY · LOCAL DEMO'}</span></div>}
-          <button className="icon-button" onClick={() => setCollapsed(!collapsed)} aria-label={collapsed ? (lang === 'ar' ? 'توسيع لوحة المتابعة' : 'Expand telemetry panel') : (lang === 'ar' ? 'طي لوحة المتابعة' : 'Collapse telemetry panel')} data-testid="button-toggle-telemetry">{collapsed ? (lang === 'ar' ? <ChevronLeft /> : <ChevronRight />) : (lang === 'ar' ? <ChevronRight /> : <ChevronLeft />)}</button>
+          {!collapsed && <div><div className="ops-panel-title">{isArabic ? 'لوحة المتابعة' : 'FIELD OVERVIEW'}</div><span className="ops-panel-kicker">{isArabic ? 'مؤشرات توضيحية · محلية' : 'SIMULATED TELEMETRY · LOCAL DEMO'}</span></div>}
+          <button className="icon-button" onClick={() => setCollapsed(!collapsed)} aria-label={collapsed ? (isArabic ? 'توسيع لوحة المتابعة' : 'Expand telemetry panel') : (isArabic ? 'طي لوحة المتابعة' : 'Collapse telemetry panel')} data-testid="button-toggle-telemetry">{collapsed ? (isArabic ? <ChevronLeft /> : <ChevronRight />) : (isArabic ? <ChevronRight /> : <ChevronLeft />)}</button>
         </div>
         {!collapsed && <div className="panel-content">
-          <div className="telemetry-grid">
-            <div className="telemetry-card crowd" data-testid="metric-predicted-crowd"><div className="telemetry-label">{lang === 'ar' ? 'إجمالي الحشود المتوقع' : 'Predicted crowd total'}</div><div className="telemetry-number">{crowdTotal.toLocaleString(lang === 'ar' ? 'ar-SA' : 'en-US')}<small>{lang === 'ar' ? 'زائر' : 'visitors'}</small></div></div>
-            <div className="telemetry-card visitor" data-testid="metric-active-reports"><div className="telemetry-label">{lang === 'ar' ? 'بلاغات الزوار النشطة' : 'Active visitor reports'}</div><div className="telemetry-number">{guestReports.length}<small>{lang === 'ar' ? 'مفتوح' : 'open'}</small></div></div>
+          <div className="telemetry-grid summary-grid">
+            <div className="telemetry-card summary-card visitor" data-testid="metric-active-reports"><div className="telemetry-label"><AlertTriangle size={12} /> {isArabic ? 'البلاغات النشطة' : 'Active reports'}</div><div className="telemetry-number">{activeIncidents.length}<small>{isArabic ? 'بلاغ' : 'reports'}</small></div></div>
+            <div className="telemetry-card summary-card resolved" data-testid="metric-resolved-reports"><div className="telemetry-label"><CheckCircle2 size={12} /> {isArabic ? 'البلاغات المنجزة' : 'Resolved reports'}</div><div className="telemetry-number">{resolvedIncidents.length}<small>{isArabic ? 'بلاغ' : 'reports'}</small></div></div>
+            <div className="telemetry-card summary-card units" data-testid="metric-on-field-units"><div className="telemetry-label"><Users size={12} /> {isArabic ? 'الوحدات الميدانية' : 'On-field units'}</div><div className="telemetry-number">{onFieldCount}<small>{isArabic ? 'متاح + مكلّف' : 'available + assigned'}</small></div></div>
+            <div className={`telemetry-card summary-card risk ${risk.className}`} data-testid="metric-risk-status"><div className="telemetry-label"><ShieldCheck size={12} /> {isArabic ? 'مستوى المخاطر الحالي' : 'Current risk status'}</div><div className="telemetry-number risk-value">{isArabic ? risk.ar : risk.en}<small>{peakDensity}%</small></div></div>
           </div>
+          <div className="telemetry-card crowd crowd-estimate" data-testid="metric-predicted-crowd"><div className="telemetry-label">{isArabic ? 'إجمالي الحشود المتوقع · تقديري' : 'Predicted crowd estimate'}</div><div className="telemetry-number">{crowdTotal.toLocaleString(isArabic ? 'ar-SA' : 'en-US')}<small>{isArabic ? 'زائر · توضيحي' : 'visitors · illustrative'}</small></div></div>
           <div className="telemetry-section">
-            <div className="telemetry-section-title">{lang === 'ar' ? 'وحدات الاستجابة' : 'Response units'}<span>{availableCount} {lang === 'ar' ? 'متاح' : 'available'} · {staff.length} {lang === 'ar' ? 'إجمالي' : 'total'}</span></div>
-            {units.slice(0, 4).map(({ person }) => <div className="unit-row" key={person.id} data-testid={`unit-row-${person.id}`}><i className={`unit-indicator ${person.status === 'Assigned' ? 'assigned' : ''}`} /><div className="unit-copy"><strong>{person.name}</strong><small>{person.role} · {person.location}</small></div><span className="unit-status">{person.status === 'Available' ? (lang === 'ar' ? 'متاح' : 'READY') : person.status === 'Assigned' ? (lang === 'ar' ? 'مكلّف' : 'ASSIGNED') : (lang === 'ar' ? 'غير متاح' : 'OFFLINE')}</span></div>)}
+            <div className="telemetry-section-title">{isArabic ? 'وحدات الاستجابة' : 'Response units'}<span>{availableCount} {isArabic ? 'متاح' : 'available'} · {assignedCount} {isArabic ? 'مكلّف' : 'assigned'}</span></div>
+            {units.slice(0, 4).map(({ person }) => <div className="unit-row" key={person.id} data-testid={`unit-row-${person.id}`}><i className={`unit-indicator ${person.status === 'Assigned' ? 'assigned' : ''} ${person.status === 'Unavailable' ? 'unavailable' : ''}`} /><div className="unit-copy"><strong>{person.name}</strong><small>{person.role} · {person.location}</small></div><span className="unit-status">{person.status === 'Available' ? (isArabic ? 'متاح' : 'READY') : person.status === 'Assigned' ? (isArabic ? 'مكلّف' : 'ASSIGNED') : (isArabic ? 'غير متاح' : 'OFFLINE')}</span></div>)}
           </div>
-          <button className="dispatch-action" onClick={dispatchNearest} disabled={!openIncidents.length || !availableCount} data-testid="button-dispatch-nearest"><Navigation />{lang === 'ar' ? 'توجيه أقرب فرد متاح' : 'Dispatch Nearest Security Unit'}</button>
-          {feedback && <div className={`dispatch-feedback ${feedback.error ? 'error' : ''}`} role="status" data-testid="status-dispatch-feedback">{feedback.text}</div>}
+          <button className="dispatch-action" onClick={dispatchNearest} disabled={!openIncidents.length || !availableCount} data-testid="button-dispatch-nearest"><Navigation />{isArabic ? 'توجيه أقرب فرد متاح' : 'Dispatch Nearest Security Unit'}</button>
+          {feedback && <div className={`dispatch-feedback ${feedback.error ? 'error' : ''}`} role={feedback.error ? 'alert' : 'status'} data-testid="status-dispatch-feedback">{feedback.text}</div>}
           <div className="telemetry-section">
-            <div className="telemetry-section-title">{lang === 'ar' ? 'النشاط المفتوح' : 'Open report activity'}<span>{lang === 'ar' ? 'مزامنة محلية' : 'LOCAL DEMO LOG'}</span></div>
-            <div className="activity-list">
-              {activityIncidents.slice(0, 5).map((incident) => <div className="map-activity" key={incident.id} data-testid={`activity-${incident.id}`}><i /><span>{incident.id.startsWith('SIM-') ? (lang === 'ar' ? 'تنبيه محاكاة' : 'Simulated alert') : incident.reportedBy === 'Guest' ? (lang === 'ar' ? 'بلاغ زائر' : 'Guest report') : (lang === 'ar' ? 'بلاغ مسجل' : 'Logged incident')} · {incident.location}<small>{incident.id} · {incident.type}{incident.description ? ` — ${incident.description}` : ''}</small></span><time>{incident.createdAt}</time></div>)}
-              {!openIncidents.length && <div className="empty-state" data-testid="empty-open-reports">{lang === 'ar' ? 'لا توجد بلاغات مفتوحة.' : 'No open reports right now.'}</div>}
+            <div className="telemetry-section-title"><span>{isArabic ? 'سجل البلاغات' : 'Incident feed'}</span><span data-testid="text-feed-count">{visibleIncidents.length} {isArabic ? 'بلاغ' : 'records'}</span></div>
+            <div className="incident-filters" role="group" aria-label={isArabic ? 'تصفية البلاغات' : 'Filter incidents'} data-testid="filters-incident-feed">
+              {(['All', 'Active', 'Resolved'] as IncidentFilter[]).map((option) => <button key={option} type="button" className="incident-filter" aria-pressed={filter === option} onClick={() => setFilter(option)} data-testid={`button-filter-${option.toLowerCase()}`}>{filterLabels[option][lang]}</button>)}
+            </div>
+            <div className="incident-feed" aria-live="polite" data-testid="list-incident-feed">
+              {visibleIncidents.map((incident) => {
+                const remaining = deadlineFor(incident);
+                const seconds = remaining && activeStatus(incident) ? Math.max(0, Math.ceil((remaining - clock.getTime()) / 1000)) : null;
+                return <article className={`feed-incident ${incident.status.toLowerCase()}`} key={incident.id} data-testid={`activity-${incident.id}`}>
+                  <div className="feed-topline"><span className="feed-id">{incident.id}</span><span className={`feed-status ${incident.status.toLowerCase()}`} data-testid={`status-incident-${incident.id}`}>{incident.status === 'Resolved' && isArabic ? 'تم الإنجاز' : incident.status === 'Resolved' ? 'Resolved' : incident.status === 'Dismissed' ? (isArabic ? 'ملغي' : 'Dismissed') : incident.status === 'Assigned' ? (isArabic ? 'مكلّف' : 'Assigned') : (isArabic ? 'مفتوح' : 'Open')}</span></div>
+                  <div className="feed-location">{incident.type} · {incident.location}</div>
+                  {incident.description && <div className="feed-detail">{incident.description}</div>}
+                  <div className="feed-meta"><span>{isArabic ? 'وقت البلاغ' : 'Reported'} · {incident.createdAt}</span>{incident.reportedBy === 'Guest' && seconds !== null && <span className={`feed-countdown ${seconds <= 10 ? 'urgent' : ''}`} role="timer" aria-live="off" data-testid={`countdown-${incident.id}`}>{isArabic ? `ينتهي خلال ${seconds}ث` : `Resolves in ${seconds}s`}</span>}{incident.assignedStaff && <span>{isArabic ? 'مكلّف' : 'Assigned'} · {incident.assignedStaff}</span>}</div>
+                </article>;
+              })}
+              {!visibleIncidents.length && <div className="feed-empty" data-testid="empty-incident-feed">{filter === 'Active' ? (isArabic ? 'لا توجد بلاغات نشطة حالياً.' : 'No active reports right now.') : filter === 'Resolved' ? (isArabic ? 'لا توجد بلاغات منجزة بعد.' : 'No resolved reports yet.') : (isArabic ? 'لا توجد بلاغات في السجل.' : 'No reports in the incident log.')}</div>}
             </div>
           </div>
           <div className="telemetry-section">
-            <div className="telemetry-section-title">{lang === 'ar' ? 'آخر تحديث' : 'Last update'}<span data-testid="text-last-update">{appTime}</span></div>
-            <div className="panel-caption">{lang === 'ar' ? 'تتغير تقديرات الكثافة ومواقع الوحدات محلياً كل بضع ثوانٍ. لا توجد بيانات مباشرة.' : 'Illustrative density estimates and unit pins shift locally every few seconds. No live feeds are connected.'}</div>
+            <div className="telemetry-section-title">{isArabic ? 'آخر تحديث توضيحي' : 'Last illustrative update'}<span data-testid="text-last-update">{updateTime}</span></div>
+            <div className="panel-caption">{isArabic ? 'تقديرات الحشود ومواقع الوحدات محاكاة محلية وليست بيانات تشغيلية مباشرة. البلاغات المرسلة من الزوار مشتركة بين صفحات العرض وتحمل مهلة إنجاز.' : 'Crowd estimates and unit positions are local simulations, not a real operational feed. Guest reports are shared across demo pages and include a resolution deadline.'}</div>
           </div>
         </div>}
       </aside>
-      <div className="map-legend-box" aria-label={lang === 'ar' ? 'مفتاح الخريطة' : 'Map legend'}><span className="legend-heading">{lang === 'ar' ? 'المفتاح' : 'Legend'}</span><div className="ops-legend"><span><i className="legend-swatch high" />{lang === 'ar' ? 'مرتفع' : 'High'}</span><span><i className="legend-swatch medium" />{lang === 'ar' ? 'متوسط' : 'Medium'}</span><span><i className="legend-swatch low" />{lang === 'ar' ? 'منخفض' : 'Low'}</span><span><i className="legend-swatch unit" />{lang === 'ar' ? 'وحدة' : 'Unit'}</span><span><i className="legend-swatch alert" />{lang === 'ar' ? 'بلاغ' : 'Report'}</span></div></div>
-      <div className="map-footer-note">{lang === 'ar' ? 'خريطة OpenStreetMap · جميع المؤشرات والمواقع محاكاة تعليمية' : 'OpenStreetMap base map · all metrics and unit positions are educational simulations'}</div>
+      <div className="map-legend-box" aria-label={isArabic ? 'مفتاح الخريطة' : 'Map legend'}><span className="legend-heading">{isArabic ? 'المفتاح' : 'Legend'}</span><div className="ops-legend"><span><i className="legend-swatch high" />{isArabic ? 'مرتفع' : 'High'}</span><span><i className="legend-swatch medium" />{isArabic ? 'متوسط' : 'Medium'}</span><span><i className="legend-swatch low" />{isArabic ? 'منخفض' : 'Low'}</span><span><i className="legend-swatch unit" />{isArabic ? 'وحدة' : 'Unit'}</span><span><i className="legend-swatch alert" />{isArabic ? 'بلاغ' : 'Report'}</span></div></div>
+      <div className="map-footer-note">{isArabic ? 'خريطة OpenStreetMap · جميع مؤشرات الحشود ومواقع الوحدات محاكاة تعليمية وليست تغذية تشغيلية مباشرة' : 'OpenStreetMap base map · crowd metrics and unit positions are educational simulations, not a real operational feed'}</div>
     </main>
   </div>;
 }

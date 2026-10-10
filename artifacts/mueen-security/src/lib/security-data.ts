@@ -7,9 +7,12 @@ export type Incident = {
   location: string;
   description: string;
   createdAt: string;
-  status: 'Open' | 'Assigned';
+  status: 'Open' | 'Assigned' | 'Resolved' | 'Dismissed';
   reportedBy: 'Guest' | 'Operations';
   assignedStaff?: string;
+  autoResolveAt?: number;
+  resolvedAt?: number;
+  dismissedAt?: number;
 };
 export type StaffStatus = 'Available' | 'Assigned' | 'Unavailable';
 export type StaffMember = {
@@ -50,10 +53,33 @@ function read<T>(key: string, fallback: T): T {
   }
 }
 function readIncidents(): Incident[] {
-  const incidents = read(INCIDENT_KEY, seededIncidents);
-  return incidents.some((incident) => incident.reportedBy === 'Guest')
-    ? incidents
-    : [...incidents, ...demoGuestIncidents];
+  const stored = read(INCIDENT_KEY, seededIncidents);
+  const now = Date.now();
+  const hasGuestReports = stored.some((incident) => incident.reportedBy === 'Guest');
+  let changed = !hasGuestReports;
+  const incidents = hasGuestReports
+    ? stored
+    : [...stored, ...demoGuestIncidents.map((incident, index) => ({
+      ...incident,
+      createdAt: new Date(now - index * 30_000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    }))];
+  const normalized = incidents.map((incident) => {
+    if (incident.reportedBy === 'Guest'
+      && (incident.status === 'Open' || incident.status === 'Assigned')
+      && !incident.autoResolveAt) {
+      changed = true;
+      return { ...incident, autoResolveAt: now + 30_000 + Math.floor(Math.random() * 15_001) };
+    }
+    return incident;
+  });
+  if (changed) {
+    try {
+      localStorage.setItem(INCIDENT_KEY, JSON.stringify(normalized));
+    } catch {
+      // Keep the in-memory demo functional if browser storage is unavailable.
+    }
+  }
+  return normalized;
 }
 function write<T>(key: string, value: T) {
   localStorage.setItem(key, JSON.stringify(value));
@@ -76,6 +102,7 @@ export function useSecurityData() {
     };
   }, []);
   const addIncident = useCallback((input: Pick<Incident, 'type' | 'location' | 'description'>) => {
+    const now = Date.now();
     const current = readIncidents();
     const item: Incident = {
       ...input,
@@ -83,6 +110,7 @@ export function useSecurityData() {
       createdAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       status: 'Open',
       reportedBy: 'Guest',
+      autoResolveAt: now + 30_000 + Math.floor(Math.random() * 15_001),
     };
     const next = [item, ...current];
     write(INCIDENT_KEY, next);
@@ -94,7 +122,7 @@ export function useSecurityData() {
     const currentStaff = read(STAFF_KEY, seededStaff);
     const member = currentStaff.find((person) => person.id === staffId);
     const incident = currentIncidents.find((item) => item.id === incidentId);
-    if (!member || !incident || member.status !== 'Available') return false;
+    if (!member || !incident || incident.status !== 'Open' || member.status !== 'Available') return false;
     const nextIncidents = currentIncidents.map((item) => item.id === incidentId
       ? { ...item, status: 'Assigned' as const, assignedStaff: member.name } : item);
     const nextStaff = currentStaff.map((person) => person.id === staffId
@@ -105,5 +133,48 @@ export function useSecurityData() {
     setStaff(nextStaff);
     return true;
   }, []);
-  return { incidents, staff, addIncident, assignIncident };
+  const closeIncident = useCallback((incidentId: string, status: 'Resolved' | 'Dismissed') => {
+    const currentIncidents = readIncidents();
+    const currentStaff = read(STAFF_KEY, seededStaff);
+    const incident = currentIncidents.find((item) => item.id === incidentId);
+    if (!incident || (incident.status !== 'Open' && incident.status !== 'Assigned')) return false;
+    const changedAt = Date.now();
+    const nextIncidents = currentIncidents.map((item) => item.id === incidentId
+      ? {
+        ...item,
+        status,
+        resolvedAt: status === 'Resolved' ? changedAt : item.resolvedAt,
+        dismissedAt: status === 'Dismissed' ? changedAt : item.dismissedAt,
+      }
+      : item);
+    let releasedAssignment = false;
+    const nextStaff = currentStaff.map((person) => {
+      if (person.name === incident.assignedStaff
+        && person.status === 'Assigned'
+        && person.assignment.startsWith(`${incident.id} ·`)) {
+        releasedAssignment = true;
+        return { ...person, status: 'Available' as const, assignment: 'No active assignment' };
+      }
+      return person;
+    });
+    write(INCIDENT_KEY, nextIncidents);
+    if (releasedAssignment) write(STAFF_KEY, nextStaff);
+    setIncidents(nextIncidents);
+    if (releasedAssignment) setStaff(nextStaff);
+    return true;
+  }, []);
+  const resolveIncident = useCallback((incidentId: string) => closeIncident(incidentId, 'Resolved'), [closeIncident]);
+  const dismissIncident = useCallback((incidentId: string) => closeIncident(incidentId, 'Dismissed'), [closeIncident]);
+  useEffect(() => {
+    const timers = incidents
+      .filter((incident) => incident.reportedBy === 'Guest'
+        && (incident.status === 'Open' || incident.status === 'Assigned')
+        && incident.autoResolveAt)
+      .map((incident) => window.setTimeout(
+        () => resolveIncident(incident.id),
+        Math.max(0, (incident.autoResolveAt as number) - Date.now()),
+      ));
+    return () => timers.forEach((timer) => window.clearTimeout(timer));
+  }, [incidents, resolveIncident]);
+  return { incidents, staff, addIncident, assignIncident, resolveIncident, dismissIncident };
 }
