@@ -77,7 +77,7 @@ const incidentTypeLabel = (type: IncidentType, lang: Language) => {
 const incidentTitle = (item: Incident, lang: Language) => `${incidentTypeLabel(item.type, lang)} · ${item.location}`;
 const statusLabel = (status: string, lang: Language) => status === 'Available' ? copy[lang].available : status === 'Assigned' ? copy[lang].assigned : copy[lang].unavailable;
 
-function Brand({ compact = false }: { compact?: boolean }) {
+export function Brand({ compact = false }: { compact?: boolean }) {
   return <div className="brand"><div className="brand-mark" data-testid="img-brand-mark"><svg viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
     <path d="M40 90 L80 65 L100 50 L120 65 L160 90" stroke="#064E3B" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round"/>
     <path d="M100 50 V75" stroke="#064E3B" strokeWidth="5" strokeLinecap="round"/>

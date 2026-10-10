@@ -28,6 +28,10 @@ const seededIncidents: Incident[] = [
   { id: 'INC-2479', type: 'Medical emergency', location: 'Eastern Courtyard', description: 'Medical team requested for a visitor requiring assistance.', createdAt: '10:26', status: 'Assigned', reportedBy: 'Operations', assignedStaff: 'Mariam Al-Harbi' },
   { id: 'INC-2476', type: 'Obstruction', location: 'Mataf, north side', description: 'A temporary obstruction has narrowed the walking route.', createdAt: '10:08', status: 'Open', reportedBy: 'Operations' },
 ];
+const demoGuestIncidents: Incident[] = [
+  { id: 'G-DEMO-01', type: 'Medical emergency', location: 'East Plaza', description: 'Demonstration visitor request for first aid; no real-world report.', createdAt: '10:51', status: 'Open', reportedBy: 'Guest' },
+  { id: 'G-DEMO-02', type: 'Fall', location: 'Ajyad Gate', description: 'Demonstration report requesting assistance; no real-world report.', createdAt: '10:47', status: 'Open', reportedBy: 'Guest' },
+];
 const seededStaff: StaffMember[] = [
   { id: 'ST-1042', name: 'Mariam Al-Harbi', role: 'Field supervisor', status: 'Assigned', location: 'Eastern Courtyard', assignment: 'INC-2479 · Medical response' },
   { id: 'ST-1086', name: 'Faisal Al-Otaibi', role: 'Crowd safety officer', status: 'Available', location: 'King Abdulaziz Gate', assignment: 'No active assignment' },
@@ -45,17 +49,23 @@ function read<T>(key: string, fallback: T): T {
     return fallback;
   }
 }
+function readIncidents(): Incident[] {
+  const incidents = read(INCIDENT_KEY, seededIncidents);
+  return incidents.some((incident) => incident.reportedBy === 'Guest')
+    ? incidents
+    : [...incidents, ...demoGuestIncidents];
+}
 function write<T>(key: string, value: T) {
   localStorage.setItem(key, JSON.stringify(value));
   window.dispatchEvent(new Event('mueen-local-update'));
 }
 
 export function useSecurityData() {
-  const [incidents, setIncidents] = useState<Incident[]>(() => read(INCIDENT_KEY, seededIncidents));
+  const [incidents, setIncidents] = useState<Incident[]>(readIncidents);
   const [staff, setStaff] = useState<StaffMember[]>(() => read(STAFF_KEY, seededStaff));
   useEffect(() => {
     const refresh = () => {
-      setIncidents(read(INCIDENT_KEY, seededIncidents));
+      setIncidents(readIncidents());
       setStaff(read(STAFF_KEY, seededStaff));
     };
     window.addEventListener('storage', refresh);
@@ -66,7 +76,7 @@ export function useSecurityData() {
     };
   }, []);
   const addIncident = useCallback((input: Pick<Incident, 'type' | 'location' | 'description'>) => {
-    const current = read(INCIDENT_KEY, seededIncidents);
+    const current = readIncidents();
     const item: Incident = {
       ...input,
       id: `G-${Date.now().toString().slice(-6)}`,
@@ -80,7 +90,7 @@ export function useSecurityData() {
     return item;
   }, []);
   const assignIncident = useCallback((incidentId: string, staffId: string) => {
-    const currentIncidents = read(INCIDENT_KEY, seededIncidents);
+    const currentIncidents = readIncidents();
     const currentStaff = read(STAFF_KEY, seededStaff);
     const member = currentStaff.find((person) => person.id === staffId);
     const incident = currentIncidents.find((item) => item.id === incidentId);

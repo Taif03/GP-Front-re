@@ -5,7 +5,8 @@ import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
 import { Route, Switch, useLocation, Router as WouterRouter, Redirect } from 'wouter';
-import { Dashboard, ReportPage, StaffPage, type Language } from './pages/experiences';
+import { ReportPage, StaffPage, type Language } from './pages/experiences';
+import { OperationsDashboard } from './pages/operations-dashboard';
 
 const queryClient = new QueryClient();
 
@@ -30,7 +31,7 @@ function Router() {
   };
   return <RoutedErrorBoundary><Switch>
     <Route path="/"><Redirect to="/dashboard" /></Route>
-    <Route path="/dashboard"><Dashboard lang={lang} setLang={changeLanguage} /></Route>
+    <Route path="/dashboard"><OperationsDashboard lang={lang} setLang={changeLanguage} /></Route>
     <Route path="/staff"><StaffPage lang={lang} setLang={changeLanguage} /></Route>
     <Route path="/report"><ReportPage lang={lang} setLang={changeLanguage} /></Route>
     <Route component={NotFound} />
@@ -39,7 +40,9 @@ function Router() {
 
 function App() {
   useEffect(() => {
-    document.documentElement.lang = localStorage.getItem('mueen-language') === 'ar' ? 'ar' : 'en';
+    const language = localStorage.getItem('mueen-language') === 'ar' ? 'ar' : 'en';
+    document.documentElement.lang = language;
+    document.documentElement.dir = language === 'ar' ? 'rtl' : 'ltr';
     document.title = 'MUEEN — Haram Safety Support';
   }, []);
   return <QueryClientProvider client={queryClient}>
