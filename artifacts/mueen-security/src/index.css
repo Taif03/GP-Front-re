@@ -329,7 +329,8 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .app-shell { min-height:100dvh; display:flex; background:radial-gradient(ellipse at 70% -15%,rgba(57,137,126,.10),transparent 42%),#131c29; }
 .sidebar { width:246px; flex:0 0 246px; min-height:100dvh; padding:26px 17px 20px; background:#101823; border-inline-end:1px solid #273443; display:flex; flex-direction:column; }
 .brand { display:flex; gap:12px; align-items:center; padding:3px 10px 26px; border-bottom:1px solid #273443; }
-.brand-mark { width:38px;height:38px;display:grid;place-items:center;border:1px solid #477d79;border-radius:12px;color:#8bc8ba;font:700 16px Manrope;letter-spacing:-1px;background:#172b31; }
+.brand-mark { width:38px;height:38px;display:grid;place-items:center;border:1px solid #e5dfd3;border-radius:12px;background:#e5dfd3;overflow:hidden;flex:none; }
+.brand-mark svg { width:100%;height:100%;display:block; }
 .brand-title {font:700 17px Manrope;letter-spacing:2px;color:#e7efef}.brand-sub {font-size:10px;color:#82919f;letter-spacing:.45px;margin-top:3px}
 .nav-label {font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:#708090;margin:27px 11px 9px}
 .nav-links {display:grid;gap:5px}.nav-link {height:42px;padding:0 11px;display:flex;align-items:center;gap:12px;color:#98a7b5;text-decoration:none;border-radius:8px;font-size:13px;transition:background .18s,color .18s}.nav-link:hover,.nav-link.active{background:#1a2a33;color:#b4ded4}.nav-link.active{box-shadow:inset 2px 0 #69b7a6}.nav-link svg {width:17px;height:17px}
